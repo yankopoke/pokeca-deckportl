@@ -7,7 +7,8 @@
 
 body {
   position: relative;
-  width: 2400px;
+  min-width: 2700px;
+  overflow-x: hidden;
   user-select: none;
   margin: 0;
   padding: 0;
@@ -18,20 +19,21 @@ main { padding: 10px 0; }
 
 .fieldWrap {
   display: flex;
-  padding: 0 50px;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 20px 0;
+  width: 2700px;
+  margin: 0 auto;
 }
 
 .fieldArea {
   width: 1150px;
-  padding-right: 50px;
-  border-right: 1px solid #999;
+  padding: 0 10px;
+  box-sizing: border-box;
 }
 
 .fieldArea:nth-of-type(2n) {
-  padding-right: 0;
-  padding-left: 50px;
-  border-right: 0;
-  border-left: 1px solid #999;
+  padding: 0 10px;
 }
 
 .boxTitle {
@@ -77,6 +79,13 @@ main { padding: 10px 0; }
 
 .cardWrap>.card:nth-of-type(n + 2) {
   margin-left: -50px;
+}
+
+.cardWrap>.card.checked {
+  outline: 3px solid #f7ad06;
+  outline-offset: -3px;
+  border-radius: 6px;
+  transform: translateY(-8px);
 }
 
 .cardWrap>.card.hide {
@@ -315,11 +324,11 @@ main { padding: 10px 0; }
 
 /* share (center area) */
 .shareArea {
-  position: absolute;
-  top: 21px;
-  left: 50%;
   width: 400px;
-  margin-left: -200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .shareArea .shareContent { position: relative; }
@@ -354,46 +363,22 @@ main { padding: 10px 0; }
   cursor: pointer;
 }
 
-.coinWrap, .damageCountWrap, .stadiumWrap {
+.coinWrap, .stadiumWrap {
   width: 260px;
   margin: 0 auto;
 }
 .coinWrap { margin-top: 10px; background-color: #fff; }
 .coinArea { width: 60px; margin: 0 auto; }
-.damageCountWrap { margin-top: 10px; background-color: #fff; }
+.coinArea img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
 .stadiumWrap {
-  float: left;
-  margin-top: 81px;
-  margin-left: -180px;
+  margin-top: 30px;
   background-color: #fff;
 }
 .stadiumArea { position: relative; }
-
-.damageCountArea {
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-}
-.damageCountArea>.damecan+.damecan { margin-left: 8px; }
-.damecan {
-  z-index: 100;
-  border-radius: 50%;
-  border: 2px solid #666;
-  font-weight: bold;
-}
-.damecan[data-damege="10"] {
-  width: 32px; height: 32px; padding: 4px;
-  background-color: #ff8e24; color: #222;
-}
-.damecan[data-damege="50"] {
-  width: 40px; height: 40px; padding: 6px; font-size: 16px;
-  background-color: #ff3804;
-}
-.damecan[data-damege="100"] {
-  width: 50px; height: 50px; padding: 10px 5px; font-size: 17px;
-  background-color: #ffd900;
-}
-.damageCountArea>.trashBox { width: 60px; margin-left: 35px; }
 
 .fromWrap .inputLeft, .fromWrap .inputRight {
   width: 172px; height: 35px;

@@ -52,9 +52,21 @@ export default function Home() {
   };
 
   const openHitorimawashi = () => {
-    const code = extractDeckCode();
-    if (code) {
-      window.open(`/simulation?code=${encodeURIComponent(code)}`, '_blank');
+    // Flatten deck for simulation (count -> individual entries)
+    const flatDeck = [];
+    deck.forEach(card => {
+      for (let i = 0; i < card.count; i++) {
+        flatDeck.push({
+          id: card.id,
+          name: card.name || "",
+          url: card.imageUrl
+        });
+      }
+    });
+
+    if (flatDeck.length > 0) {
+      localStorage.setItem('pokeca_preview_deck', JSON.stringify(flatDeck));
+      window.open(`/simulation?source=local`, '_blank');
     }
   };
 
@@ -317,8 +329,8 @@ export default function Home() {
               <button
                 className="accent"
                 onClick={openHitorimawashi}
-                disabled={!extractDeckCode() || deck.length === 0}
-                title={extractDeckCode() ? '1人回しツールでこのデッキを練習する' : 'デッキコードでインポートしたデッキのみ対応'}
+                disabled={deck.length === 0}
+                title={deck.length > 0 ? '1人回しツールで現在のデッキを練習する' : 'カードをデッキに追加してください'}
               >
                 🎮 1人回し
               </button>

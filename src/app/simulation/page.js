@@ -9,6 +9,26 @@ export default function Simulation() {
   const searchParams = useSearchParams();
   const initialized = useRef(false);
 
+  useEffect(() => {
+    function handleResize() {
+      if (typeof window !== 'undefined') {
+        const targetWidth = 2750; // Expected overall width including margins
+        const scale = Math.min(1, window.innerWidth / targetWidth);
+        // Use zoom instead of transform: scale to preserve drag/drop coordinate offsets
+        document.body.style.zoom = scale;
+      }
+    }
+    
+    if (typeof window !== 'undefined') {
+      handleResize();
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        document.body.style.zoom = 1;
+      };
+    }
+  }, []);
+
   const handleScriptsLoaded = () => {
     if (initialized.current) return;
     if (typeof window === 'undefined' || !window.Sortable) return;
@@ -42,6 +62,7 @@ export default function Simulation() {
         const img = document.createElement("img");
         img.src = card.url; img.alt = card.name;
         li.appendChild(img);
+        li.onclick = () => { li.classList.toggle("checked"); };
         dw.appendChild(li);
 
         li.oncontextmenu = (e) => {
@@ -70,7 +91,7 @@ export default function Simulation() {
       }
     }
 
-    // Deck load
+    // Deck load from code
     const setBtn = getEl("set-btn");
     setBtn.onclick = async () => {
       const cid1 = getEl("left_code").value.trim();
@@ -108,6 +129,52 @@ export default function Simulation() {
       finally { document.querySelector(".loading").classList.add("is-hide"); }
     };
 
+    // Support Saved Decks from LocalStorage
+    const loadSavedDeck = (deckId, player) => {
+      const stored = localStorage.getItem('pokeca_decks');
+      if (!stored) return;
+      try {
+        const savedDecks = JSON.parse(stored);
+        const target = savedDecks.find(d => d.id === deckId);
+        if (target) {
+          const flatDeck = [];
+          target.cards.forEach(card => {
+            for (let i = 0; i < card.count; i++) {
+              flatDeck.push({
+                id: card.id,
+                name: card.name || "",
+                url: card.imageUrl
+              });
+            }
+          });
+          init(player, flatDeck);
+          setupInitialState(player);
+        }
+      } catch (err) {
+        console.error("Failed to load saved deck", err);
+      }
+    };
+
+    const leftSaved = getEl("left_saved_deck");
+    const rightSaved = getEl("right_saved_deck");
+    
+    const populateSavedDecks = () => {
+      const stored = localStorage.getItem('pokeca_decks');
+      if (stored) {
+        try {
+          const savedDecks = JSON.parse(stored);
+          const options = savedDecks.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+          const placeholder = '<option value="">保存済みデッキから選択</option>';
+          if (leftSaved) leftSaved.innerHTML = placeholder + options;
+          if (rightSaved) rightSaved.innerHTML = placeholder + options;
+        } catch (e) {}
+      }
+    };
+    populateSavedDecks();
+
+    if (leftSaved) leftSaved.onchange = (e) => { if(e.target.value) loadSavedDeck(e.target.value, "p1"); };
+    if (rightSaved) rightSaved.onchange = (e) => { if(e.target.value) loadSavedDeck(e.target.value, "p2"); };
+
     // Zone controls for each player
     ["p1", "p2"].forEach(p => {
       // Draw, shuffle, deck view
@@ -115,21 +182,84 @@ export default function Simulation() {
       getEl(`${p}_shuffle_btn`).onclick = () => { const dw = getEl(`${p}_deck_wrap`); const nodes = Array.from(dw.children).shuffle(); dw.innerHTML = ""; nodes.forEach(n => dw.appendChild(n)); };
       getEl(`${p}_deck_btn`).onclick = () => {
         const dl = getEl(`${p}_deck`);
+        const dw = getEl(`${p}_deck_wrap`);
         dl.style.display = dl.style.display === "none" ? "block" : "none";
         getEl(`${p}_deck_btn`).value = dl.style.display === "none" ? "デッキを見る" : "デッキを閉じる";
+        // デッキを見るときは全カードを表向きに
+        if (dl.style.display !== "none") {
+          Array.from(dw.children).forEach(c => c.classList.remove("hide"));
+        }
       };
 
       // Side buttons
       getEl(`${p}_side_open`).onclick = () => { const sw = getEl(`${p}_side_wrap`); Array.from(sw.children).forEach(c => c.classList.remove("hide")); };
+      // Side shuffle
+      const sideShuffle = getEl(`${p}_side_shuffle`);
+      if (sideShuffle) sideShuffle.onclick = () => { const sw = getEl(`${p}_side_wrap`); const nodes = Array.from(sw.children).shuffle(); sw.innerHTML = ""; nodes.forEach(n => sw.appendChild(n)); };
+      // Side get N cards
+      [1,2,3].forEach(n => {
+        const btn = getEl(`${p}_side_get${n}`);
+        if (btn) btn.onclick = () => {
+          const sw = getEl(`${p}_side_wrap`); const hw = getEl(`${p}_hand_wrap`);
+          for (let i = 0; i < n; i++) { if (sw.firstElementChild) { const c = sw.firstElementChild; c.classList.remove("hide"); hw.appendChild(c); } }
+        };
+      });
+
+      // Battle zone buttons
+      const battleToDeck = getEl(`${p}_battle_to_deck`);
+      if (battleToDeck) battleToDeck.onclick = () => {
+        const bw = getEl(`${p}_battle_wrap`); const dw = getEl(`${p}_deck_wrap`);
+        Array.from(bw.children).forEach(c => { c.classList.remove("hide"); dw.appendChild(c); });
+        const nodes = Array.from(dw.children).shuffle(); dw.innerHTML = ""; nodes.forEach(n => dw.appendChild(n));
+        const input = getEl(`${p}_battle_damage_box`); if (input) input.value = "0";
+      };
+      const battleTrash = getEl(`${p}_battle_trash`);
+      if (battleTrash) battleTrash.onclick = () => {
+        const bw = getEl(`${p}_battle_wrap`); const tw = getEl(`${p}_trash_wrap`);
+        Array.from(bw.children).forEach(c => { c.classList.remove("hide"); tw.appendChild(c); });
+        const input = getEl(`${p}_battle_damage_box`); if (input) input.value = "0";
+      };
+
+      // Bench buttons (バトル場 / トラッシュ)
+      [1,2,3,4,5,6,7,8].forEach(n => {
+        const toBattle = getEl(`${p}_b${n}_battle`);
+        if (toBattle) toBattle.onclick = () => {
+          const benchWrap = getEl(`${p}_bench${n}_wrap`); const battleWrap = getEl(`${p}_battle_wrap`);
+          const benchDmg = getEl(`${p}_bench${n}_damage_box`);
+          const battleDmg = getEl(`${p}_battle_damage_box`);
+          // Save current cards and damage
+          const battleCards = Array.from(battleWrap.children);
+          const benchCards = Array.from(benchWrap.children);
+          const oldBattleDmg = battleDmg ? battleDmg.value : "0";
+          const oldBenchDmg = benchDmg ? benchDmg.value : "0";
+          // Move battle cards to bench
+          battleCards.forEach(c => benchWrap.appendChild(c));
+          // Move bench cards to battle
+          benchCards.forEach(c => battleWrap.appendChild(c));
+          // Swap damage values
+          if (battleDmg) battleDmg.value = oldBenchDmg;
+          if (benchDmg) benchDmg.value = oldBattleDmg;
+        };
+        const toTrash = getEl(`${p}_b${n}_trash`);
+        if (toTrash) toTrash.onclick = () => {
+          const benchWrap = getEl(`${p}_bench${n}_wrap`); const tw = getEl(`${p}_trash_wrap`);
+          Array.from(benchWrap.children).forEach(c => tw.appendChild(c));
+          const input = getEl(`${p}_bench${n}_damage_box`); if (input) input.value = "0";
+        };
+      });
 
       // Damage
-      ["battle","bench1","bench2","bench3","bench4","bench5"].forEach(z => {
+      ["battle","bench1","bench2","bench3","bench4","bench5","bench6","bench7","bench8"].forEach(z => {
         const input = getEl(`${p}_${z}_damage_box`);
         const up = getEl(`${p}_${z}_damage_box_up`);
         const down = getEl(`${p}_${z}_damage_box_down`);
+        const up50 = getEl(`${p}_${z}_damage_box_up50`);
+        const up100 = getEl(`${p}_${z}_damage_box_up100`);
         if (up && down && input) {
           up.onclick = (e) => { e.preventDefault(); input.value = (parseInt(input.value) || 0) + 10; };
           down.onclick = (e) => { e.preventDefault(); input.value = Math.max(0, (parseInt(input.value) || 0) - 10); };
+          if (up50) up50.onclick = (e) => { e.preventDefault(); input.value = (parseInt(input.value) || 0) + 50; };
+          if (up100) up100.onclick = (e) => { e.preventDefault(); input.value = (parseInt(input.value) || 0) + 100; };
         }
       });
 
@@ -157,9 +287,42 @@ export default function Simulation() {
         }
       });
 
-      // Reset
+      // Reset (per-player: collect all cards back to deck, reshuffle, redeal)
       const resetBtn = getEl(`${p}_reset`);
-      if (resetBtn) resetBtn.onclick = () => setBtn.click();
+      if (resetBtn) resetBtn.onclick = () => {
+        const dw = getEl(`${p}_deck_wrap`);
+        const hw = getEl(`${p}_hand_wrap`);
+        const sw = getEl(`${p}_side_wrap`);
+        const tw = getEl(`${p}_trash_wrap`);
+        const bw = getEl(`${p}_battle_wrap`);
+        const lz = getEl(`${p}_lostzone_wrap`);
+        // Collect cards from all zones back to deck
+        [hw, sw, tw, bw, lz].forEach(zone => {
+          if (zone) Array.from(zone.children).forEach(c => { c.classList.remove("hide", "checked"); dw.appendChild(c); });
+        });
+        [1,2,3,4,5,6,7,8].forEach(n => {
+          const benchWrap = getEl(`${p}_bench${n}_wrap`);
+          if (benchWrap) Array.from(benchWrap.children).forEach(c => { c.classList.remove("hide", "checked"); dw.appendChild(c); });
+          const benchDmg = getEl(`${p}_bench${n}_damage_box`);
+          if (benchDmg) benchDmg.value = "0";
+        });
+        // Reset battle damage
+        const battleDmg = getEl(`${p}_battle_damage_box`);
+        if (battleDmg) battleDmg.value = "0";
+        // Reset status conditions
+        ["burn","poison","sleeping","paralysis","confusion"].forEach(s => {
+          const btn = getEl(`${p}_${s}`);
+          if (btn) btn.classList.remove("on");
+        });
+        const bg = getEl(`${p}_battle_bg`);
+        if (bg) bg.style.backgroundColor = "transparent";
+        // Shuffle deck
+        const nodes = Array.from(dw.children).shuffle();
+        dw.innerHTML = "";
+        nodes.forEach(n => dw.appendChild(n));
+        // Redeal initial state
+        setupInitialState(p);
+      };
 
       // LostZone toggle
       const lzBtn = getEl(`${p}_lostzone_btn`);
@@ -184,21 +347,53 @@ export default function Simulation() {
         dw.innerHTML = "";
         nodes.forEach(n => dw.appendChild(n));
       };
+      // Hand to deck bottom
+      const handToDeckBottom = getEl(`${p}_hand_to_deck_bottom`);
+      if (handToDeckBottom) handToDeckBottom.onclick = () => {
+        const hw = getEl(`${p}_hand_wrap`);
+        const dw = getEl(`${p}_deck_wrap`);
+        Array.from(hw.querySelectorAll(".card.checked")).forEach(c => { c.classList.remove("checked"); dw.appendChild(c); });
+      };
+      // Mugen zone (bench+)
+      const mugenBtn = getEl(`${p}_mugen_zone`);
+      if (mugenBtn) mugenBtn.onclick = () => {
+        [6,7,8].forEach(n => {
+          const bench = getEl(`${p}_bench${n}`);
+          if (bench) bench.style.display = bench.style.display === "none" ? "" : "none";
+        });
+      };
+      // Deck top 5
+      const deck5Btn = getEl(`${p}_deck_5`);
+      if (deck5Btn) deck5Btn.onclick = () => {
+        const dl = getEl(`${p}_deck`);
+        const dw = getEl(`${p}_deck_wrap`);
+        dl.style.display = "block";
+        getEl(`${p}_deck_btn`).value = "デッキを閉じる";
+        // Show only top 5 face-up, rest face-down
+        Array.from(dw.children).forEach((c, i) => {
+          if (i < 5) c.classList.remove("hide");
+          else c.classList.add("hide");
+        });
+      };
     });
 
     // Sortable
     const sortZones = [
       "p1_side_wrap","p1_battle_wrap","p1_hand_wrap","p1_trash_wrap","p1_deck_wrap","p1_lostzone_wrap",
       "p2_side_wrap","p2_battle_wrap","p2_hand_wrap","p2_trash_wrap","p2_deck_wrap","p2_lostzone_wrap",
-      "stadium_wrap"
     ];
     [1,2,3,4,5,6,7,8].forEach(n => { sortZones.push(`p1_bench${n}_wrap`); sortZones.push(`p2_bench${n}_wrap`); });
     sortZones.forEach(id => {
       const el = getEl(id);
       if (el && window.Sortable) {
-        window.Sortable.create(el, { group: id.startsWith("p1") ? "p1" : id.startsWith("p2") ? "p2" : "common", animation: 100 });
+        window.Sortable.create(el, { group: id.startsWith("p1") ? "p1" : "p2", animation: 100 });
       }
     });
+    // Stadium accepts cards from both P1 and P2
+    const stadiumEl = getEl("stadium_wrap");
+    if (stadiumEl && window.Sortable) {
+      window.Sortable.create(stadiumEl, { group: { name: "stadium", put: ["p1", "p2"] }, animation: 100 });
+    }
 
     // Coin
     getEl("coin").onclick = async function() {
@@ -212,6 +407,13 @@ export default function Simulation() {
     // Dark mode
     getEl("darkmode_button").onclick = () => document.body.classList.toggle("dark");
 
+    // Stadium trash
+    const stadiumTrash = getEl("stadium_trash");
+    if (stadiumTrash) stadiumTrash.onclick = () => {
+      const sw = getEl("stadium_wrap"); const tw = getEl("p1_trash_wrap");
+      Array.from(sw.children).forEach(c => tw.appendChild(c));
+    };
+
     // Context menu close
     document.addEventListener('click', (e) => {
       const menu = getEl('contextmenu');
@@ -224,9 +426,25 @@ export default function Simulation() {
       if (el) el.onclick = () => el.classList.toggle("on");
     });
 
-    // Auto load from URL
+    // Auto load from URL or LocalStorage
+    const source = searchParams.get('source');
     const code = searchParams.get('code');
-    if (code) { getEl("left_code").value = code; setBtn.click(); }
+    
+    if (source === 'local') {
+      const localData = localStorage.getItem('pokeca_preview_deck');
+      if (localData) {
+        try {
+          const p1Deck = JSON.parse(localData);
+          init("p1", p1Deck);
+          setupInitialState("p1");
+        } catch (e) {
+          console.error("Failed to load local deck", e);
+        }
+      }
+    } else if (code) {
+      getEl("left_code").value = code;
+      setBtn.click();
+    }
   };
 
   const BenchArea = ({ p, n }) => (
@@ -235,6 +453,8 @@ export default function Simulation() {
         <input id={`${p}_bench${n}_damage_box`} type="tel" name="num" className="damageBox" defaultValue="0" />
         <a id={`${p}_bench${n}_damage_box_up`} className="btn01">▲</a>
         <a id={`${p}_bench${n}_damage_box_down`} className="btn01">▼</a>
+        <a id={`${p}_bench${n}_damage_box_up50`} className="btn01">+50</a>
+        <a id={`${p}_bench${n}_damage_box_up100`} className="btn01">+100</a>
       </p>
       <div id={`${p}_bench${n}_bg`} className="bgLayout"></div>
       <div className="btnWrap">
@@ -288,6 +508,8 @@ export default function Simulation() {
             <input id="p1_battle_damage_box" type="tel" name="num" className="damageBox" defaultValue="0" />
             <a id="p1_battle_damage_box_up" className="btn01">▲</a>
             <a id="p1_battle_damage_box_down" className="btn01">▼</a>
+            <a id="p1_battle_damage_box_up50" className="btn01">+50</a>
+            <a id="p1_battle_damage_box_up100" className="btn01">+100</a>
             <a id="p1_battle_to_deck" className="btn01">デッキ戻し</a>
             <a id="p1_battle_trash" className="btn01">トラッシュ</a>
           </div>
@@ -295,7 +517,6 @@ export default function Simulation() {
         </div>
         <div id="p1_lostzone" className="lostArea boxLayout01" style={{display:'none'}}>
           <div className="boxTitle">lost(<span id="p1_lostzone_remaining">0</span>)</div>
-          <div className="btnWrap"><a id="p1_lostzone_sort" className="btn01">並び替え</a></div>
           <ul id="p1_lostzone_wrap" className="cardWrap"></ul>
         </div>
       </div>
@@ -311,15 +532,10 @@ export default function Simulation() {
           <div className="handArea boxLayout01">
             <div className="boxTitle">hand(<span id="p1_hand_remaining">0</span>)
               <a id="p1_mugen_zone" className="btn01" style={{marginLeft:10}}>ベンチ+</a>
-              <a id="p1_uncheck" className="btn01" style={{marginLeft:10}}>チェック解除</a>
             </div>
             <div className="btnWrap">
-              <a id="p1_hand_sort" className="btn01">並び替え</a>
               <a id="p1_hand_trash" className="btn01">トラッシュ</a>
               <a id="p1_hand_to_deck" className="btn01">デッキ戻し</a>
-              <a id="p1_hand_hakase" className="btn01">博士</a>
-              <a id="p1_hand_nanjamo" className="btn01">ナンジャモ</a>
-              <a id="p1_hand_judgeman" className="btn01">ジャッジマン</a>
               <a id="p1_hand_to_deck_bottom" className="btn01">デッキ下</a>
             </div>
             <ul id="p1_hand_wrap" className="cardWrap"></ul>
@@ -329,7 +545,6 @@ export default function Simulation() {
           <div className="trashArea boxLayout01">
             <div className="boxTitle">trash(<span id="p1_trash_remaining">0</span>)</div>
             <div className="btnWrap">
-              <a id="p1_trash_sort" className="btn01">並び替え</a>
               <a id="p1_lostzone_btn" className="btn01">ロストゾーン表示</a>
             </div>
             <ul id="p1_trash_wrap" className="cardWrap"></ul>
@@ -375,22 +590,10 @@ export default function Simulation() {
         </div>
       </div>
 
-      {/* Stadium */}
-      <div className="stadiumWrap">
-        <div className="stadiumArea boxLayout01">
-          <div id="stadium_bg" className="bgLayout"></div>
-          <div className="boxTitle">stadium
-            <div className="btnWrap alR"><a id="stadium_trash" className="btn01">トラッシュ</a></div>
-          </div>
-          <ul id="stadium_wrap" className="cardWrap"></ul>
-        </div>
-      </div>
-
       {/* Battle */}
       <div className="battleWrap">
         <div id="p2_lostzone" className="lostArea boxLayout01" style={{display:'none'}}>
           <div className="boxTitle">lost(<span id="p2_lostzone_remaining">0</span>)</div>
-          <div className="btnWrap"><a id="p2_lostzone_sort" className="btn01">並び替え</a></div>
           <ul id="p2_lostzone_wrap" className="cardWrap"></ul>
         </div>
         <div id="p2_battle" className="battleArea boxLayout01">
@@ -408,6 +611,8 @@ export default function Simulation() {
             <input id="p2_battle_damage_box" type="tel" name="num" className="damageBox" defaultValue="0" />
             <a id="p2_battle_damage_box_up" className="btn01">▲</a>
             <a id="p2_battle_damage_box_down" className="btn01">▼</a>
+            <a id="p2_battle_damage_box_up50" className="btn01">+50</a>
+            <a id="p2_battle_damage_box_up100" className="btn01">+100</a>
             <a id="p2_battle_to_deck" className="btn01">デッキ戻し</a>
             <a id="p2_battle_trash" className="btn01">トラッシュ</a>
           </div>
@@ -426,15 +631,10 @@ export default function Simulation() {
           <div className="handArea boxLayout01">
             <div className="boxTitle">hand(<span id="p2_hand_remaining">0</span>)
               <a id="p2_mugen_zone" className="btn01" style={{marginLeft:10}}>ベンチ+</a>
-              <a id="p2_uncheck" className="btn01" style={{marginLeft:10}}>チェック解除</a>
             </div>
             <div className="btnWrap">
-              <a id="p2_hand_sort" className="btn01">並び替え</a>
               <a id="p2_hand_trash" className="btn01">トラッシュ</a>
               <a id="p2_hand_to_deck" className="btn01">デッキ戻し</a>
-              <a id="p2_hand_hakase" className="btn01">博士</a>
-              <a id="p2_hand_nanjamo" className="btn01">ナンジャモ</a>
-              <a id="p2_hand_judgeman" className="btn01">ジャッジマン</a>
               <a id="p2_hand_to_deck_bottom" className="btn01">デッキ下</a>
             </div>
             <ul id="p2_hand_wrap" className="cardWrap"></ul>
@@ -444,7 +644,6 @@ export default function Simulation() {
           <div className="trashArea boxLayout01">
             <div className="boxTitle">trash(<span id="p2_trash_remaining">0</span>)</div>
             <div className="btnWrap">
-              <a id="p2_trash_sort" className="btn01">並び替え</a>
               <a id="p2_lostzone_btn" className="btn01">ロストゾーン表示</a>
             </div>
             <ul id="p2_trash_wrap" className="cardWrap"></ul>
@@ -478,17 +677,25 @@ export default function Simulation() {
       <main>
         <div className="fieldWrap">
           <P1Area />
-          <P2Area />
           <div className="shareArea">
             <div className="fromWrap">
-              <input type="text" name="num" id="left_code" className="inputLeft" placeholder="デッキコードを入力" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <input type="text" name="num" id="left_code" className="inputLeft" placeholder="デッキコードを入力" />
+                <select id="left_saved_deck" className="inputLeft" style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '4px' }}>
+                  <option value="">保存済みデッキから選択</option>
+                </select>
+              </div>
               <input type="button" id="set-btn" value="SET!" className="submitBtn" />
-              <input type="text" name="num" id="right_code" className="inputRight" placeholder="デッキコードを入力" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <input type="text" name="num" id="right_code" className="inputRight" placeholder="デッキコードを入力" />
+                <select id="right_saved_deck" className="inputRight" style={{ background: '#333', color: 'white', border: '1px solid #555', padding: '4px' }}>
+                  <option value="">保存済みデッキから選択</option>
+                </select>
+              </div>
             </div>
             <div className="fromWrap" onContextMenu={(e) => e.preventDefault()}>
               <div className="btnWrap" style={{textAlign:'center',marginTop:10}}>
                 <a id="p1_reset" className="btn01">引き直し</a>
-                <a id="smartphone_btn" className="smartphoneBtn">スマホエリア追加</a>
                 <a id="p2_reset" className="btn01">引き直し</a>
               </div>
               <div className="shareContent" onContextMenu={(e) => e.preventDefault()}>
@@ -498,30 +705,26 @@ export default function Simulation() {
                     <img id="coin" className="coinBack" src="https://funamushi.net/pokeca_hitorimawashi/img/coin.png" alt="coincheck!" />
                   </div>
                 </div>
-                <div className="damageCountWrap boxLayout01" onContextMenu={(e) => e.preventDefault()}>
-                  <p className="boxTitle">damageCounter</p>
-                  <div className="damageCountArea" id="app">
-                    <div id="damecan10" className="damecan" data-damege="10">10</div>
-                    <div id="damecan50" className="damecan" data-damege="50">50</div>
-                    <div id="damecan100" className="damecan" data-damege="100">100</div>
-                    <div id="trashBox" className="trashBox">
-                      <img src="https://funamushi.net/pokeca_hitorimawashi/img/gomibako.png" alt="" style={{width:'100%'}} />
+                <div className="stadiumWrap">
+                  <div className="stadiumArea boxLayout01">
+                    <div id="stadium_bg" className="bgLayout"></div>
+                    <div className="boxTitle">stadium
+                      <div className="btnWrap alR"><a id="stadium_trash" className="btn01">トラッシュ</a></div>
                     </div>
+                    <ul id="stadium_wrap" className="cardWrap"></ul>
                   </div>
                 </div>
-                <div className="arrArea" onContextMenu={(e) => e.preventDefault()}>
-                  <div id="moveLeftButton" className="arrLeft">&lt;</div>
-                  <div id="moveRightButton" className="arrRight">&gt;</div>
-                </div>
+
               </div>
             </div>
           </div>
+          <P2Area />
         </div>
         <div id="contextmenu" onContextMenu={(e) => e.preventDefault()}>
           <ul>
             <li id="retuen_to_deck">デッキに戻してシャッフル</li>
             <li id="move_to_trash">トラッシュ</li>
-            <li id="go_to_card_page">大きい画像を表示</li>
+
             <li id="move_to_top">デッキトップに戻す</li>
             <li id="move_to_bottom">デッキボトムに戻す</li>
             <li id="reverse_card">裏表を逆にする</li>
