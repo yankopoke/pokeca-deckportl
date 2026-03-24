@@ -100,7 +100,6 @@ export default function Home() {
     if (localDeck) {
       if (confirm(`ローカルに保存された "${expectedName}" の編集データがあります。こちらを読み込みますか？\n（キャンセルを押すと、公式から再取得して上書きします）`)) {
         loadDeck(localDeck);
-        setShowManager(false);
         return;
       }
     }
@@ -119,7 +118,7 @@ export default function Home() {
       setDeck(data.cards);
       setDeckName(`インポート: ${deckCode}`);
       setLoading(false);
-      setShowManager(false); // Hide the manager automatically after successful import
+      // Removed auto-collapse here to allow further management
     } catch (err) {
       setError('デッキの取得に失敗しました: ' + err.message);
       setLoading(false);
@@ -226,15 +225,14 @@ export default function Home() {
       setSavedDecks([...savedDecks, newSaved]);
     }
     
-    // Auto collapse after saving to dedicate more space to editing
-    setShowManager(false);
+    // Auto collapse removed here
     alert('保存完了しました！');
   };
 
   const loadDeck = (savedDeck) => {
     setDeck(savedDeck.cards);
     setDeckName(savedDeck.name);
-    setShowManager(false);
+    // setShowManager(false); // Removed auto-collapse on selection
   };
 
   const deleteSavedDeck = (id) => {
@@ -266,45 +264,59 @@ export default function Home() {
 
       {/* Top Section: Loading & Saving (Collapsible) */}
       {showManager && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', flexShrink: 0 }}>
-          
-          {/* Load Official Deck */}
-          <section className="glass-panel" style={{ padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>デッキコード読込</h2>
-            <form onSubmit={fetchDeck} style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-              <input
-                type="text"
-                placeholder="デッキコード (例: 8Ycc8D-XXX)"
-                value={deckCode}
-                onChange={(e) => setDeckCode(e.target.value)}
-                disabled={loading}
-              />
-              <button type="submit" disabled={loading || !deckCode.trim()}>
-                {loading ? <span className="loader"></span> : '読込'}
-              </button>
-            </form>
-            {error && <p style={{ color: 'var(--danger)', marginTop: '0.5rem' }}>{error}</p>}
-          </section>
-
-          {/* Saved Decks */}
-          <section className="glass-panel" style={{ padding: '1.5rem' }}>
+        <section className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1rem', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
             <h2 style={{ fontSize: '1.2rem', margin: 0 }}>保存済みデッキ ({savedDecks.length})</h2>
-            {savedDecks.length === 0 ? (
-              <p style={{ marginTop: '1rem', fontSize: '0.9rem' }}>保存されたデッキはありません。</p>
-            ) : (
-              <div style={{ marginTop: '1rem', maxHeight: '80px', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                {savedDecks.map(d => (
-                  <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.8rem', borderRadius: '4px' }}>
-                    <span style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }} onClick={() => loadDeck(d)}>
-                      {d.name} ({d.cards.reduce((acc, c)=>acc+c.count, 0)}枚)
-                    </span>
-                    <button className="danger" style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }} onClick={() => deleteSavedDeck(d.id)}>削除</button>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>デッキコード読込:</span>
+              <form onSubmit={fetchDeck} className="compact-form">
+                <input
+                  type="text"
+                  placeholder="例: 8Ycc8D-XXX"
+                  value={deckCode}
+                  onChange={(e) => setDeckCode(e.target.value)}
+                  disabled={loading}
+                  style={{ width: '180px' }}
+                />
+                <button type="submit" disabled={loading || !deckCode.trim()}>
+                  {loading ? <span className="loader" style={{ width: '14px', height: '14px' }}></span> : '読込'}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {error && <p style={{ color: 'var(--danger)', marginBottom: '1rem', fontSize: '0.9rem' }}>{error}</p>}
+
+          {savedDecks.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>保存されたデッキはありません。</p>
+          ) : (
+            <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+              <div className="saved-decks-grid">
+                {[...savedDecks].reverse().map(d => (
+                  <div key={d.id} className="saved-deck-item" onClick={() => loadDeck(d)}>
+                    <div className="saved-deck-info">
+                      <div className="saved-deck-name" title={d.name}>{d.name}</div>
+                      <div className="saved-deck-meta">
+                        {d.cards.reduce((acc, c)=>acc+c.count, 0)}枚 · {new Date(d.updatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button 
+                      className="delete-btn-sm" 
+                      title="削除"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSavedDeck(d.id);
+                      }}
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
-            )}
-          </section>
-        </div>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Main Workspace (Takes remaining full height) */}

@@ -234,3 +234,106 @@ button.accent:disabled {
   padding-top: 0;
   padding-bottom: 0;
 }
+/* Saved Decks Grid */
+.saved-decks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.saved-deck-item {
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.saved-deck-item:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.saved-deck-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.saved-deck-name {
+  font-weight: 700;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-main);
+}
+
+.saved-deck-meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.saved-deck-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  min-height: 28px;
+}
+
+.delete-btn-sm {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+  border-radius: 50% !important;
+  font-size: 0.7rem !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  opacity: 0;
+  transition: all 0.2s ease !important;
+  z-index: 10;
+}
+
+.saved-deck-item:hover .delete-btn-sm {
+  opacity: 1;
+}
+
+.delete-btn-sm:hover {
+  background: #ef4444 !important;
+  color: white !important;
+  transform: scale(1.1);
+}
+
+/* Compact Form */
+.compact-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.compact-form input[type="text"] {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.compact-form button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
