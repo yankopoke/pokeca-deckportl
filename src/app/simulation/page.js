@@ -300,6 +300,16 @@ export default function Simulation() {
         [hw, sw, tw, bw, lz].forEach(zone => {
           if (zone) Array.from(zone.children).forEach(c => { c.classList.remove("hide", "checked"); dw.appendChild(c); });
         });
+        // Also check stadium for this player's cards
+        const stadiumWrap = getEl("stadium_wrap");
+        if (stadiumWrap) {
+          Array.from(stadiumWrap.children).forEach(c => {
+            if (c.id.startsWith(p)) {
+              c.classList.remove("hide", "checked");
+              dw.appendChild(c);
+            }
+          });
+        }
         [1,2,3,4,5,6,7,8].forEach(n => {
           const benchWrap = getEl(`${p}_bench${n}_wrap`);
           if (benchWrap) Array.from(benchWrap.children).forEach(c => { c.classList.remove("hide", "checked"); dw.appendChild(c); });
@@ -336,13 +346,13 @@ export default function Simulation() {
       if (handTrash) handTrash.onclick = () => {
         const hw = getEl(`${p}_hand_wrap`);
         const tw = getEl(`${p}_trash_wrap`);
-        Array.from(hw.querySelectorAll(".card.checked")).forEach(c => { c.classList.remove("checked"); tw.appendChild(c); });
+        Array.from(hw.children).forEach(c => { c.classList.remove("checked"); tw.appendChild(c); });
       };
       const handToDeck = getEl(`${p}_hand_to_deck`);
       if (handToDeck) handToDeck.onclick = () => {
         const hw = getEl(`${p}_hand_wrap`);
         const dw = getEl(`${p}_deck_wrap`);
-        Array.from(hw.querySelectorAll(".card.checked")).forEach(c => { c.classList.remove("checked"); dw.appendChild(c); });
+        Array.from(hw.children).forEach(c => { c.classList.remove("checked"); dw.appendChild(c); });
         const nodes = Array.from(dw.children).shuffle();
         dw.innerHTML = "";
         nodes.forEach(n => dw.appendChild(n));
@@ -352,7 +362,7 @@ export default function Simulation() {
       if (handToDeckBottom) handToDeckBottom.onclick = () => {
         const hw = getEl(`${p}_hand_wrap`);
         const dw = getEl(`${p}_deck_wrap`);
-        Array.from(hw.querySelectorAll(".card.checked")).forEach(c => { c.classList.remove("checked"); dw.appendChild(c); });
+        Array.from(hw.children).forEach(c => { c.classList.remove("checked"); dw.appendChild(c); });
       };
       // Mugen zone (bench+)
       const mugenBtn = getEl(`${p}_mugen_zone`);
@@ -392,7 +402,25 @@ export default function Simulation() {
     // Stadium accepts cards from both P1 and P2
     const stadiumEl = getEl("stadium_wrap");
     if (stadiumEl && window.Sortable) {
-      window.Sortable.create(stadiumEl, { group: { name: "stadium", put: ["p1", "p2"] }, animation: 100 });
+      window.Sortable.create(stadiumEl, {
+        group: { name: "stadium", put: ["p1", "p2"] },
+        animation: 100,
+        onAdd: function (evt) {
+          // Move other cards in stadium to their owner's trash
+          const item = evt.item;
+          const parent = evt.to;
+          Array.from(parent.children).forEach(c => {
+            if (c !== item) {
+              const owner = c.id.startsWith("p1") ? "p1" : "p2";
+              const tw = getEl(`${owner}_trash_wrap`);
+              if (tw) {
+                c.classList.remove("hide", "checked");
+                tw.appendChild(c);
+              }
+            }
+          });
+        }
+      });
     }
 
     // Coin
@@ -410,8 +438,15 @@ export default function Simulation() {
     // Stadium trash
     const stadiumTrash = getEl("stadium_trash");
     if (stadiumTrash) stadiumTrash.onclick = () => {
-      const sw = getEl("stadium_wrap"); const tw = getEl("p1_trash_wrap");
-      Array.from(sw.children).forEach(c => tw.appendChild(c));
+      const sw = getEl("stadium_wrap");
+      Array.from(sw.children).forEach(c => {
+        const owner = c.id.startsWith("p1") ? "p1" : "p2";
+        const tw = getEl(`${owner}_trash_wrap`);
+        if (tw) {
+          c.classList.remove("hide", "checked");
+          tw.appendChild(c);
+        }
+      });
     };
 
     // Context menu close

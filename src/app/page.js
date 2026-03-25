@@ -24,6 +24,9 @@ export default function Home() {
   // Saved decks state
   const [savedDecks, setSavedDecks] = useState([]);
 
+  // Enlarged card state
+  const [selectedCard, setSelectedCard] = useState(null);
+
   // Load saved decks on mount
   useEffect(() => {
     const stored = localStorage.getItem('pokeca_decks');
@@ -36,10 +39,18 @@ export default function Home() {
     }
   }, []);
 
-  // Save to locale storage whenever savedDecks change
   useEffect(() => {
     localStorage.setItem('pokeca_decks', JSON.stringify(savedDecks));
   }, [savedDecks]);
+
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setSelectedCard(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
 
   const totalCards = deck.reduce((acc, card) => acc + card.count, 0);
 
@@ -70,22 +81,58 @@ export default function Home() {
     }
   };
 
-  // Sort order definition
+  // Map API type keys (from hidden field names: deck_pke, deck_gds, etc.) to 3 categories
+  const TYPE_MAP = {
+    'pke': 'ポケモン',
+    'ene': 'エネルギー',
+    // All trainer subtypes → トレーナーズ
+    'gds': 'トレーナーズ',
+    'tool': 'トレーナーズ',
+    'sup': 'トレーナーズ',
+    'sta': 'トレーナーズ',
+    'tech': 'トレーナーズ',
+    'ajs': 'トレーナーズ',
+    // Fallbacks for card-type API responses (Japanese)
+    'ポケモン': 'ポケモン',
+    'グッズ': 'トレーナーズ',
+    'ポケモンのどうぐ': 'トレーナーズ',
+    'サポート': 'トレーナーズ',
+    'スタジアム': 'トレーナーズ',
+    'エネルギー': 'エネルギー',
+  };
+
+  // 3 categories in display order
   const SORT_ORDER = [
     'ポケモン',
-    'グッズ',
-    'ポケモンのどうぐ',
-    'サポート',
-    'スタジアム',
+    'トレーナーズ',
     'エネルギー',
-    'その他'
   ];
 
+  // Infer type from image URL pattern
+  const inferTypeFromUrl = (url) => {
+    if (!url) return 'トレーナーズ';
+    if (url.includes('_P_') || url.includes('/large/P/')) return 'ポケモン';
+    if (url.includes('_E_') || url.includes('/large/E/')) return 'エネルギー';
+    if (url.includes('_T_') || url.includes('/large/T/')) return 'トレーナーズ';
+    return 'トレーナーズ';
+  };
+
+  // Normalize type: convert API keys to one of the 3 display categories
+  const normalizeType = (card) => {
+    if (card.type && SORT_ORDER.includes(card.type)) return card.type; // already correct
+    if (card.type && TYPE_MAP[card.type]) return TYPE_MAP[card.type];
+    return inferTypeFromUrl(card.imageUrl);
+  };
+
   const sortDeck = (cards) => {
-    return [...cards].sort((a, b) => {
+    // Normalize types before sorting
+    const normalized = cards.map(c => ({ ...c, type: normalizeType(c) }));
+    return normalized.sort((a, b) => {
       const posA = SORT_ORDER.indexOf(a.type) >= 0 ? SORT_ORDER.indexOf(a.type) : 999;
       const posB = SORT_ORDER.indexOf(b.type) >= 0 ? SORT_ORDER.indexOf(b.type) : 999;
-      return posA - posB;
+      if (posA !== posB) return posA - posB;
+      // Secondary sort by name
+      return (a.name || "").localeCompare(b.name || "");
     });
   };
 
@@ -115,7 +162,8 @@ export default function Home() {
         throw new Error(data.error || 'Failed to load deck');
       }
       
-      setDeck(data.cards);
+      const sortedCards = sortDeck(data.cards);
+      setDeck(sortedCards);
       setDeckName(`インポート: ${deckCode}`);
       setLoading(false);
       // Removed auto-collapse here to allow further management
@@ -179,9 +227,12 @@ export default function Home() {
       return;
     }
     
-    // Add provisionally
-    const tempCard = { ...card, type: '読込中...', count: 1 };
-    setDeck(prev => [...prev, tempCard]);
+    // Infer type from image URL
+    const inferredType = inferTypeFromUrl(card.imageUrl);
+    
+    // Add provisionally but with sorting
+    const tempCard = { ...card, type: inferredType, count: 1 };
+    setDeck(prev => sortDeck([...prev, tempCard]));
 
     try {
       const res = await fetch(`/api/card-type?id=${card.id}`);
@@ -194,10 +245,7 @@ export default function Home() {
       });
     } catch (e) {
       console.error(e);
-      setDeck(prev => {
-        const updated = prev.map(c => c.id === card.id ? { ...c, type: 'その他' } : c);
-        return sortDeck(updated);
-      });
+      // inferredType is already a valid Japanese type, keep it as-is
     }
   };
 
@@ -230,7 +278,7 @@ export default function Home() {
   };
 
   const loadDeck = (savedDeck) => {
-    setDeck(savedDeck.cards);
+    setDeck(sortDeck(savedDeck.cards));
     setDeckName(savedDeck.name);
     // setShowManager(false); // Removed auto-collapse on selection
   };
@@ -355,20 +403,40 @@ export default function Home() {
                 カードがありません。デッキコードを読み込むか、検索して追加してください。
               </div>
             ) : (
-              <div className="deck-grid" style={{ marginTop: '0' }}>
-                {deck.map(card => (
-                  <div key={card.id} className="card-item">
-                    <div className="card-image-wrap">
-                      <Image src={card.imageUrl} alt={card.name || card.id} fill style={{ objectFit: 'contain' }} unoptimized />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                {SORT_ORDER.map(type => {
+                  const typeCards = deck.filter(c => c.type === type || (type === 'その他' && !SORT_ORDER.includes(c.type)));
+                  
+                  if (typeCards.length === 0) return null;
+                  
+                  const typeCount = typeCards.reduce((acc, c) => acc + c.count, 0);
+                  
+                  return (
+                    <div key={type} className="deck-category">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--primary)', fontWeight: '700' }}>{type}</h3>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.5rem', borderRadius: '10px' }}>
+                          {typeCount} 枚
+                        </span>
+                      </div>
+                      <div className="deck-grid" style={{ marginTop: '0' }}>
+                        {typeCards.map(card => (
+                          <div key={card.id} className="card-item">
+                            <div className="card-image-wrap" onClick={() => setSelectedCard(card)}>
+                              <Image src={card.imageUrl} alt={card.name || card.id} fill style={{ objectFit: 'contain' }} unoptimized />
+                            </div>
+                            <div className="card-controls">
+                              <button className="qty-btn" onClick={() => updateCardCount(card, -1)}>-</button>
+                              <span className="card-qty">{card.count}</span>
+                              <button className="qty-btn" onClick={() => updateCardCount(card, 1)}>+</button>
+                              <button className="qty-btn" style={{ marginLeft: 'auto', color: 'var(--danger)', background: 'transparent' }} onClick={() => removeCard(card.id)}>✕</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="card-controls">
-                      <button className="qty-btn" onClick={() => updateCardCount(card, -1)}>-</button>
-                      <span className="card-qty">{card.count}</span>
-                      <button className="qty-btn" onClick={() => updateCardCount(card, 1)}>+</button>
-                      <button className="qty-btn" style={{ marginLeft: 'auto', color: 'var(--danger)', background: 'transparent' }} onClick={() => removeCard(card.id)}>✕</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -400,7 +468,11 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {searchResults.map(card => (
                 <div key={card.id} style={{ display: 'flex', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px' }}>
-                  <div style={{ position: 'relative', width: '70px', height: '98px', flexShrink: 0, background: 'rgba(0,0,0,0.5)', borderRadius: '4px' }}>
+                  <div 
+                    className="search-result-image" 
+                    style={{ position: 'relative', width: '70px', height: '98px', flexShrink: 0, background: 'rgba(0,0,0,0.5)', borderRadius: '4px' }}
+                    onClick={() => setSelectedCard(card)}
+                  >
                     <Image src={card.imageUrl} alt={card.name} fill style={{ objectFit: 'contain' }} unoptimized />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
@@ -420,6 +492,23 @@ export default function Home() {
         </section>
 
       </div>
+
+      {/* Card Detail Modal */}
+      {selectedCard && (
+        <div className="card-modal-overlay" onClick={() => setSelectedCard(null)}>
+          <div className="card-modal-content" onClick={e => e.stopPropagation()}>
+            <button className="card-modal-close" onClick={() => setSelectedCard(null)}>✕</button>
+            <Image 
+              src={selectedCard.imageUrl} 
+              alt={selectedCard.name || selectedCard.id} 
+              width={600} 
+              height={840} 
+              style={{ objectFit: 'contain' }}
+              unoptimized
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
