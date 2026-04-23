@@ -41,3 +41,6 @@ search.html
 reference_source.html
 reference_layout.css
 reference_base.css
+*.txt
+cityresu.db
+dist/

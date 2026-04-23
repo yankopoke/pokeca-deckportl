@@ -19,13 +19,17 @@ export async function GET(request) {
 
     // Exact Map for Pokemon Card Official: PCGDECK.searchItemCardPict[38063]='/assets/...'
     const imgMap = {};
-    const regex = /PCGDECK\.searchItemCardPict\[(\d+)\]\s*=\s*'([^']+)'/g;
+    const nameMap = {};
+    const imgRegex = /PCGDECK\.searchItemCardPict\[(\d+)\]\s*=\s*'([^']+)'/g;
+    const nameRegex = /PCGDECK\.searchItemNameAlt\[(\d+)\]\s*=\s*'([^']+)'/g;
     let match;
-    while ((match = regex.exec(html)) !== null) {
+    while ((match = imgRegex.exec(html)) !== null) {
         let path = match[2];
-        // clean any accidental trailing slashes or fix duplicate slashes
         path = path.replace(/\/\//g, '/');
         imgMap[match[1]] = path;
+    }
+    while ((match = nameRegex.exec(html)) !== null) {
+        nameMap[match[1]] = match[2];
     }
 
     const cards = [];
@@ -52,6 +56,7 @@ export async function GET(request) {
                 cards.push({
                   id,
                   count,
+                  name: nameMap[id] || '',
                   type: name.replace('deck_', ''),
                   imageUrl: imgPath.startsWith('http') ? imgPath : `https://www.pokemon-card.com${imgPath}`
                 });

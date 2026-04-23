@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, Suspense } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
+import { apiClient } from '@/lib/api-client';
 import './simulation.css';
 
-export default function Simulation() {
+function SimulationContent() {
   const searchParams = useSearchParams();
   const initialized = useRef(false);
 
@@ -107,8 +108,7 @@ export default function Simulation() {
             ...Array(58).fill({ id: "99", name: "Energy", url: "https://www.pokemon-card.com/assets/images/card_images/large/S11/100100_E_KIHONHAGANEENERGY.jpg" })
           ];
         } else {
-          const res = await fetch(`/api/proxy?id=${cid1}`);
-          const data = await res.json();
+          const data = await apiClient.fetchProxy(cid1);
           if (Array.isArray(data) && data.length > 0) p1Deck = data;
           else { alert("P1: デッキが見つかりませんでした"); return; }
         }
@@ -119,8 +119,7 @@ export default function Simulation() {
           let p2Deck = [];
           if (cid2 === "maggyo") { p2Deck = p1Deck; }
           else {
-            const res2 = await fetch(`/api/proxy?id=${cid2}`);
-            const data2 = await res2.json();
+            const data2 = await apiClient.fetchProxy(cid2);
             if (Array.isArray(data2) && data2.length > 0) p2Deck = data2;
           }
           if (p2Deck.length > 0) { init("p2", p2Deck); setupInitialState("p2"); }
@@ -771,5 +770,13 @@ export default function Simulation() {
         </div>
       </main>
     </>
+  );
+}
+
+export default function Simulation() {
+  return (
+    <Suspense fallback={<div>読み込み中...</div>}>
+      <SimulationContent />
+    </Suspense>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { apiClient } from '@/lib/api-client';
 
 export default function Home() {
   const [deckCode, setDeckCode] = useState('');
@@ -108,6 +109,21 @@ export default function Home() {
     'エネルギー',
   ];
 
+  // Trainer subtypes order for internal sorting
+  const TRAINER_ORDER = [
+    'sup', 'サポート',
+    'gds', 'グッズ',
+    'ajs', // ACE SPEC
+    'tool', 'ポケモンのどうぐ',
+    'sta', 'スタジアム',
+    'tech', // Technical Machine
+  ];
+
+  const getTrainerSortPos = (type) => {
+    const pos = TRAINER_ORDER.indexOf(type);
+    return pos >= 0 ? pos : 999;
+  };
+
   // Infer type from image URL pattern
   const inferTypeFromUrl = (url) => {
     if (!url) return 'トレーナーズ';
@@ -119,20 +135,26 @@ export default function Home() {
 
   // Normalize type: convert API keys to one of the 3 display categories
   const normalizeType = (card) => {
-    if (card.type && SORT_ORDER.includes(card.type)) return card.type; // already correct
+    if (card.type && SORT_ORDER.includes(card.type)) return card.type;
     if (card.type && TYPE_MAP[card.type]) return TYPE_MAP[card.type];
     return inferTypeFromUrl(card.imageUrl);
   };
 
   const sortDeck = (cards) => {
-    // Normalize types before sorting
-    const normalized = cards.map(c => ({ ...c, type: normalizeType(c) }));
+    // 毎回 displayType と internalType を再計算して、常に最新の type に基づくソートを保証
+    const normalized = cards.map(c => {
+      const displayType = normalizeType(c);
+      const internalType = c.type || inferTypeFromUrl(c.imageUrl);
+      return { ...c, displayType, internalType };
+    });
+
     return normalized.sort((a, b) => {
-      const posA = SORT_ORDER.indexOf(a.type) >= 0 ? SORT_ORDER.indexOf(a.type) : 999;
-      const posB = SORT_ORDER.indexOf(b.type) >= 0 ? SORT_ORDER.indexOf(b.type) : 999;
-      if (posA !== posB) return posA - posB;
-      // Secondary sort by name
-      return (a.name || "").localeCompare(b.name || "");
+      // Primary sort by category (Pokemon, Trainers, Energy)
+      const posA = SORT_ORDER.indexOf(a.displayType) >= 0 ? SORT_ORDER.indexOf(a.displayType) : 999;
+      const posB = SORT_ORDER.indexOf(b.displayType) >= 0 ? SORT_ORDER.indexOf(b.displayType) : 999;
+      
+      // 追加された順番を保持するため、カテゴリでのみソートを行う
+      return posA - posB;
     });
   };
 
@@ -155,18 +177,12 @@ export default function Home() {
     setError('');
     
     try {
-      const res = await fetch(`/api/deck?code=${encodeURIComponent(deckCode)}`);
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to load deck');
-      }
+      const data = await apiClient.fetchDeck(deckCode);
       
       const sortedCards = sortDeck(data.cards);
       setDeck(sortedCards);
       setDeckName(`インポート: ${deckCode}`);
       setLoading(false);
-      // Removed auto-collapse here to allow further management
     } catch (err) {
       setError('デッキの取得に失敗しました: ' + err.message);
       setLoading(false);
@@ -183,13 +199,8 @@ export default function Home() {
     setSearchResults([]);
 
     try {
-      const res = await fetch(`/api/search?keyword=${encodeURIComponent(keyword)}`);
-      const data = await res.json();
+      const data = await apiClient.searchCards(keyword);
       
-      if (!res.ok) {
-        throw new Error(data.error || 'Search failed');
-      }
-
       setSearchResults(data.results);
       setSearchLoading(false);
     } catch (err) {
@@ -206,12 +217,11 @@ export default function Home() {
       if (existing) {
         const newCount = existing.count + delta;
         if (newCount <= 0) {
-          updated = prev.filter(c => c.id !== card.id); // Remove card completely
+          updated = prev.filter(c => c.id !== card.id);
         } else {
           updated = prev.map(c => c.id === card.id ? { ...c, count: newCount } : c);
         }
       } else if (delta > 0) {
-        // Add new card
         updated = [...prev, { ...card, count: 1 }];
       } else {
         return prev;
@@ -227,25 +237,25 @@ export default function Home() {
       return;
     }
     
-    // Infer type from image URL
+    // Infer type from image URL for provisional display
     const inferredType = inferTypeFromUrl(card.imageUrl);
     
-    // Add provisionally but with sorting
+    // Add card with inferred type, sortDeck will compute displayType
     const tempCard = { ...card, type: inferredType, count: 1 };
     setDeck(prev => sortDeck([...prev, tempCard]));
 
     try {
-      const res = await fetch(`/api/card-type?id=${card.id}`);
-      const data = await res.json();
-      const actualType = data.type || 'その他';
+      const data = await apiClient.getCardType(card.id);
+      const actualType = data.type || inferredType; // Fallback to inferred type instead of 'その他'
 
+      // Update type and re-sort to reflect the correct category
       setDeck(prev => {
         const updated = prev.map(c => c.id === card.id ? { ...c, type: actualType } : c);
         return sortDeck(updated);
       });
     } catch (e) {
       console.error(e);
-      // inferredType is already a valid Japanese type, keep it as-is
+      // inferredType is already set, keep as-is
     }
   };
 
@@ -405,7 +415,7 @@ export default function Home() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                 {SORT_ORDER.map(type => {
-                  const typeCards = deck.filter(c => c.type === type || (type === 'その他' && !SORT_ORDER.includes(c.type)));
+                  const typeCards = deck.filter(c => c.displayType === type || (type === 'その他' && !SORT_ORDER.includes(c.displayType)));
                   
                   if (typeCards.length === 0) return null;
                   

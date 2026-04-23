@@ -2,12 +2,14 @@
   "name": "deckcode-analyzer",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "electron-main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron:dev": "electron .",
+    "dist": "npm run build && electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +21,31 @@
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@electron/packager": "^19.1.0",
+    "electron": "^41.0.4",
+    "electron-builder": "^26.8.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.1"
+  },
+  "build": {
+    "appId": "com.deckcode.analyzer",
+    "productName": "DeckCodeAnalyzer",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      ".next/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "electron-main.js",
+      "next.config.mjs",
+      "public/**/*",
+      "src/**/*"
+    ],
+    "win": {
+      "target": "dir"
+    },
+    "forceCodeSigning": false
   }
 }
